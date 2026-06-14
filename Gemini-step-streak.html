@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Step Streak">
+<meta name="theme-color" content="#0d0f1a">
+<meta name="description" content="Daily step streak tracker with escalating rewards">
+<title>Step Streak</title>
+<script>
+(function() {
+  const manifest = {
+    name: "Step Streak", short_name: "Step Streak", start_url: ".", display: "standalone",
+    background_color: "#0d0f1a", theme_color: "#0d0f1a", orientation: "portrait",
+    icons: [{ src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%230d0f1a'/%3E%3Ctext x='96' y='130' font-size='110' text-anchor='middle'%3E%F0%9F%90%B1%3C/text%3E%3C/svg%3E", sizes: "192x192", type: "image/svg+xml", purpose: "any maskable" }]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('link'); link.rel = 'manifest'; link.href = url;
+  document.currentScript.after(link);
+})();
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f1a; --card: #141626; --border: #1e2235; --text: #e8eaf6;
+    --muted: #5a5f7a; --amber: #f5a623;
+    --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: ui-monospace, 'Cascadia Code', 'Consolas', 'Roboto Mono', monospace;
+  }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--font-sans);
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 24px 16px 48px;
+  }
+  header { text-align: center; margin-bottom: 32px; }
+  header h1 { font-size: 1.1rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  header .tagline { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); opacity: 0.6; }
+
+  .streak-ring-wrap { position: relative; width: 160px; height: 160px; margin: 0 auto 28px; }
+  .streak-ring-wrap svg { position: absolute; top: 0; left: 0; transform: rotate(-90deg); width: 160px; height: 160px; }
+  .ring-bg { fill: none; stroke: var(--border); stroke-width: 8; }
+  .ring-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1), stroke 0.8s ease; }
+  .streak-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+  .streak-num { font-family: var(--font-mono); font-size: 3rem; font-weight: 700; line-height: 1; transition: color 0.8s ease; }
+  .streak-label { font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+
+  .tier-badge {
+    text-align: center; margin-bottom: 28px; font-size: 0.8rem; letter-spacing: 0.12em;
+    text-transform: uppercase; font-weight: 700; padding: 6px 18px; border-radius: 100px;
+    border: 1px solid; display: inline-block; transition: all 0.8s ease;
+  }
+
+  .main-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+    padding: 24px; width: 100%; max-width: 380px; margin-bottom: 20px;
+  }
+  .step-input-area label { font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .date-picker {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 6px 10px; font-family: var(--font-mono); font-size: 0.85rem;
+    outline: none; color-scheme: dark; cursor: pointer;
+  }
+  .date-picker:focus { border-color: var(--amber); }
+
+  .step-row { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  .step-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-family: var(--font-mono); font-size: 1.4rem; padding: 12px 16px; outline: none; transition: border-color 0.2s;
+  }
+  .step-input:focus { border-color: var(--amber); }
+  .log-btn {
+    background: var(--amber); color: #0d0f1a; border: none; border-radius: 12px;
+    font-family: var(--font-sans); font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; padding: 14px 20px; cursor: pointer;
+  }
+  .log-btn:hover { transform: scale(1.03); }
+
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; cursor: pointer; width: fit-content; }
+  .checkbox-row input[type="checkbox"] {
+    appearance: none; width: 18px; height: 18px; border: 2px solid var(--muted); border-radius: 4px;
+    background: var(--bg); cursor: pointer; position: relative; transition: all 0.2s;
+  }
+  .checkbox-row input[type="checkbox"]:checked { background: var(--amber); border-color: var(--amber); }
+  .checkbox-row input[type="checkbox"]:checked::after { content: '✔'; position: absolute; color: #0d0f1a; font-size: 12px; font-weight: bold; top: -1px; left: 2px; }
+  .checkbox-row label { font-size: 0.85rem; color: var(--text); cursor: pointer; text-transform: none !important; letter-spacing: normal !important; margin-bottom: 0 !important; }
+
+  .goal-display { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--muted); }
+  .goal-edit { background: none; border: none; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; text-decoration: underline; font-family: var(--font-sans); }
+  .goal-edit:hover { color: var(--text); }
+  .goal-set-area { margin-top: 12px; display: none; gap: 8px; }
+  .goal-set-area.visible { display: flex; }
+  .goal-set-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-family: var(--font-mono); font-size: 1rem; padding: 8px 12px; outline: none; }
+  .goal-set-btn { background: var(--border); color: var(--text); border: none; border-radius: 10px; font-size: 0.8rem; font-weight: 600; padding: 8px 14px; cursor: pointer; }
+
+  .reward-section { width: 100%; max-width: 380px; margin-bottom: 20px; }
+  .reward-section h2 { font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .reward-card {
+    border-radius: 20px; padding: 22px 24px; border: 1px solid; position: relative; overflow: hidden;
+    transition: all 0.8s ease; min-height: 100px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .reward-card::before {
+    content: ''; position: absolute; top: -40%; right: -20%; width: 200px; height: 200px;
+    border-radius: 50%; opacity: 0.07; background: currentColor; transition: opacity 0.8s;
+  }
+  .reward-emoji { font-size: 2.2rem; line-height: 1; }
+  .reward-title { font-size: 1.05rem; font-weight: 700; line-height: 1.3; }
+  .reward-desc { font-size: 0.85rem; opacity: 0.8; line-height: 1.5; }
+  .reward-unlock-label { font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.6; margin-top: 4px; font-weight: bold; }
+
+  .unlock-overlay { position: fixed; inset: 0; background: rgba(13,15,26,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+  .unlock-overlay.show { opacity: 1; pointer-events: all; }
+  .unlock-inner { text-align: center; transform: scale(0.8); transition: transform 0.4s cubic-bezier(.34,1.56,.64,1); }
+  .unlock-overlay.show .unlock-inner { transform: scale(1); }
+  .unlock-emoji { font-size: 5rem; display: block; margin-bottom: 16px; animation: bounce 0.6s ease 0.2s both; }
+  @keyframes bounce { 0% { transform: scale(0); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+  .unlock-streak { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 8px; opacity: 0.6; }
+  .unlock-title { font-size: 1.6rem; font-weight: 700; margin-bottom: 8px; max-width: 280px; }
+  .unlock-desc { font-size: 0.9rem; color: var(--muted); max-width: 260px; line-height: 1.5; margin-bottom: 28px; }
+  .unlock-close { background: var(--amber); color: #0d0f1a; border: none; border-radius: 100px; font-family: var(--font-sans); font-size: 0.85rem; font-weight: 700; padding: 12px 32px; cursor: pointer; }
+
+  .sparkles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .spark { position: absolute; border-radius: 50%; animation: sparkle 1.2s ease forwards; }
+  @keyframes sparkle { 0% { opacity: 1; transform: scale(0) translate(0,0); } 100% { opacity: 0; transform: scale(1) translate(var(--tx), var(--ty)); } }
+
+  .history-section { width: 100%; max-width: 380px; }
+  .history-section h2 { font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .history-grid { display: flex; gap: 6px; flex-wrap: wrap; }
+  .history-dot {
+    width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; border: 1px solid var(--border); position: relative; cursor: pointer; transition: background 0.3s;
+  }
+  .history-dot.hit { border-color: transparent; }
+  .history-dot.miss { background: var(--border); color: var(--muted); opacity: 0.5; }
+  .history-dot.freeze { background: var(--border); opacity: 0.7; border: 1px dashed var(--muted); }
+  .history-dot.today { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .history-dot:hover { outline: 1px solid var(--muted); outline-offset: 2px; }
+  .history-dot .dot-tip {
+    display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; font-size: 0.65rem;
+    white-space: nowrap; color: var(--text); z-index: 10; font-family: var(--font-sans);
+  }
+  .history-dot:hover .dot-tip { display: block; }
+
+  .reset-btn { margin-top: 24px; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 10px; font-size: 0.72rem; padding: 8px 16px; cursor: pointer; }
+  .confetti-piece { position: fixed; width: 8px; height: 8px; opacity: 0; animation: confetti-fall 2s ease forwards; pointer-events: none; z-index: 99; }
+  @keyframes confetti-fall { 0% { opacity: 1; transform: translateY(0) rotate(0deg); } 100% { opacity: 0; transform: translateY(100vh) rotate(720deg); } }
+
+  .nag-banner { width: 100%; max-width: 380px; border-radius: 16px; padding: 18px 20px; margin-bottom: 20px; display: none; flex-direction: column; gap: 6px; border: 2px solid var(--border); position: relative; overflow: hidden; }
+  .nag-banner.visible { display: flex; }
+  .nag-top { display: flex; align-items: center; gap: 10px; }
+  .nag-icon { font-size: 1.6rem; }
+  .nag-text-group { flex: 1; }
+  .nag-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 2px; }
+  .nag-sub { font-size: 0.75rem; opacity: 0.7; line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Step Streak</h1>
+  <div class="tagline">keep the fire burning</div>
+</header>
+
+<div class="nag-banner" id="nagBanner">
+  <div class="nag-top">
+    <div class="nag-icon" id="nagIcon">🐾</div>
+    <div class="nag-text-group">
+      <div class="nag-title" id="nagTitle">You haven't logged today yet</div>
+      <div class="nag-sub" id="nagSub">Don't let the day slip by — log your steps.</div>
+    </div>
+  </div>
+</div>
+
+<div class="streak-ring-wrap">
+  <svg viewBox="0 0 160 160">
+    <circle class="ring-bg" cx="80" cy="80" r="68"/>
+    <circle class="ring-fill" id="ringFill" cx="80" cy="80" r="68" stroke-dasharray="427" stroke-dashoffset="427"/>
+  </svg>
+  <div class="streak-center">
+    <div class="streak-num" id="streakNum">0</div>
+    <div class="streak-label">day streak</div>
+  </div>
+</div>
+
+<div style="text-align:center;margin-bottom:28px;">
+  <span class="tier-badge" id="tierBadge">No Streak Yet</span>
+</div>
+
+<div class="main-card">
+  <div class="step-input-area">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <label for="logDateInput" style="margin-bottom:0;">Log Steps For:</label>
+      <input type="date" id="logDateInput" class="date-picker">
+    </div>
+    
+    <div class="step-row">
+      <input type="number" class="step-input" id="stepInput" placeholder="0" min="0" max="99999" inputmode="numeric">
+      <button class="log-btn" id="logBtn">Save</button>
+    </div>
+    
+    <div class="checkbox-row" id="migraineWrap">
+      <input type="checkbox" id="migraineToggle">
+      <label for="migraineToggle">🤕 Migraine Day (Lowers goal to 40%)</label>
+    </div>
+
+    <div class="goal-display">
+      <span id="goalText">Goal: 10,000 steps</span>
+      <button class="goal-edit" id="goalEditBtn">Change goal</button>
+    </div>
+    <div class="goal-set-area" id="goalSetArea">
+      <input type="number" class="goal-set-input" id="goalInput" placeholder="10000" min="1000" max="50000" inputmode="numeric">
+      <button class="goal-set-btn" id="goalSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="reward-section">
+  <h2>Selected Day's Result</h2>
+  <div class="reward-card" id="rewardCard">
+    <div class="sparkles" id="sparkles"></div>
+    <div class="reward-emoji" id="rewardEmoji">🐾</div>
+    <div class="reward-title" id="rewardTitle">Start your streak</div>
+    <div class="reward-desc" id="rewardDesc">Log your steps today to unlock your first reward.</div>
+    <div class="reward-unlock-label" id="rewardUnlockLabel"></div>
+  </div>
+</div>
+
+<div class="history-section">
+  <h2>Last 30 days <span style="font-size:0.65rem;color:var(--muted);font-weight:400;text-transform:none;">— tap any day to load it above</span></h2>
+  <div class="history-grid" id="historyGrid"></div>
+</div>
+
+<div style="width:100%;max-width:380px;margin-top:8px;">
+  <button class="reset-btn" id="resetBtn">Reset everything</button>
+</div>
+
+<div class="unlock-overlay" id="unlockOverlay">
+  <div class="unlock-inner">
+    <span class="unlock-emoji" id="unlockEmoji">🎉</span>
+    <div class="unlock-streak" id="unlockStreakLabel"></div>
+    <div class="unlock-title" id="unlockTitle"></div>
+    <div class="unlock-desc" id="unlockDesc"></div>
+    <button class="unlock-close" id="unlockClose">Got it!</button>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'stepStreakv3';
+
+const REWARDS = [
+  { streak: 1, tier: 'bronze', color: '#cd7f32', bg: '#1a1208', emoji: '🐱', title: 'First Step', desc: 'Every chain starts somewhere. You started yours today.', unlock: 'Day 1 Bronze' },
+  { streak: 2, tier: 'bronze', color: '#cd7f32', bg: '#1a1208', emoji: '🐾', title: 'Building Momentum', desc: 'Two in a row. Your body is noticing.', unlock: 'Day 2 Bronze' },
+  { streak: 3, tier: 'bronze', color: '#cd7f32', bg: '#1a1208', emoji: '😺', title: 'Three-Day Fire', desc: 'Three days in a row. The chain is starting to feel real.', unlock: 'Day 3 Bronze' },
+  { streak: 5, tier: 'silver', color: '#a8a9ad', bg: '#131313', emoji: '😸', title: 'Electric Five', desc: 'Five days straight. Your streak has its own energy now.', unlock: 'Day 5 Silver' },
+  { streak: 7, tier: 'silver', color: '#a8a9ad', bg: '#131313', emoji: '😻', title: 'Full Week', desc: 'A complete week. You didn’t let a single day slip.', unlock: 'Day 7 Silver' },
+  { streak: 10, tier: 'gold', color: '#f5a623', bg: '#1a1200', emoji: '🐱✨', title: 'Double Digits', desc: 'Ten days. Most people quit before this. You kept going.', unlock: 'Day 10 Gold' },
+  { streak: 14, tier: 'gold', color: '#f5a623', bg: '#1a1200', emoji: '🐾✨', title: 'Two-Week Warrior', desc: 'Two weeks of unbroken steps. This is a real habit now.', unlock: 'Day 14 Gold' },
+  { streak: 21, tier: 'gold', color: '#f5a623', bg: '#1a1200', emoji: '😼', title: 'Neural Rewiring', desc: '21 days. Your brain is starting to lock this in.', unlock: 'Day 21 Gold' },
+  { streak: 30, tier: 'platinum', color: '#b0e0e6', bg: '#081418', emoji: '😺✨', title: 'The Full Month', desc: 'One month. You showed up every single day.', unlock: 'Day 30 Platinum' },
+  { streak: 40, tier: 'platinum', color: '#b0e0e6', bg: '#081418', emoji: '🐱👑', title: 'Unstoppable Flow', desc: 'Forty days. You’ve crossed into rare territory.', unlock: 'Day 40 Platinum' },
+  { streak: 50, tier: 'legendary', color: '#ff69b4', bg: '#180010', emoji: '😻👑', title: 'Legendary Fifty', desc: 'Fifty days. Truly legendary. The streak is part of who you are now.', unlock: 'Day 50 Legendary' },
+  { streak: 75, tier: 'legendary', color: '#ff69b4', bg: '#180010', emoji: '✨🐱✨', title: 'Beyond Measure', desc: 'Seventy-five days. You’re building something serious.', unlock: 'Day 75 Legendary' },
+  { streak: 100, tier: 'legendary', color: '#ff69b4', bg: '#180010', emoji: '👑🐾', title: '100-Day Crown', desc: 'One hundred days. That is an enormous accomplishment.', unlock: 'Day 100 Legendary' }
+];
+
+const TIERCOLORS = {
+  none: { color: '#5a5f7a', bg: 'var(--card)', border: '#1e2235', label: 'No Streak Yet' },
+  bronze: { color: '#cd7f32', bg: '#1a1208', border: '#3d2810', label: 'Bronze' },
+  silver: { color: '#a8a9ad', bg: '#131313', border: '#2e2e2e', label: 'Silver' },
+  gold: { color: '#f5a623', bg: '#1a1200', border: '#3d2e00', label: 'Gold' },
+  platinum: { color: '#b0e0e6', bg: '#081418', border: '#0f2e35', label: 'Platinum' },
+  legendary: { color: '#ff69b4', bg: '#180010', border: '#3d0030', label: 'Legendary' }
+};
+
+const MIGRAINE_THRESHOLD = 0.4;
+const OVER_GOAL_STEP = 0.1;
+
+let state = { goal: 10000, streak: 0, history: {}, lastLoggedDate: null };
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch (e) {}
+}
+
+function normalizeEntry(val) {
+  if (val && typeof val === 'object') return { steps: Math.max(0, parseInt(val.steps || 0, 10) || 0), migraine: !!val.migraine };
+  return { steps: Math.max(0, parseInt(val || 0, 10) || 0), migraine: false };
+}
+
+function getEntry(ds) { return normalizeEntry(state.history[ds]); }
+function setEntry(ds, entry) { state.history[ds] = normalizeEntry(entry); }
+function getPct(steps) { return state.goal ? steps / state.goal : 0; }
+function formatPct(n) { return Math.round(n * 100); }
+function getOverGoalTier(pct) { return pct < 1 ? 0 : Math.floor((pct - 1) / OVER_GOAL_STEP); }
+
+function getCatMood(pct, migraine) {
+  if (pct >= 1.3) return '👑🐱'; 
+  if (pct >= 1.2) return '😻✨'; 
+  if (pct >= 1.1) return '😸✨'; 
+  if (pct >= 1.0) return migraine ? '👑🐱' : '😺'; 
+  if (pct >= 0.4 && migraine) return '😽'; 
+  return '😿'; 
+}
+
+function getRewardForStreak(streak) {
+  if (streak <= 0) return null;
+  let best = null;
+  for (const r of REWARDS) if (streak >= r.streak) best = r;
+  return best || REWARDS[0];
+}
+
+function calcStreakThroughDate(targetDs) {
+  const dates = Object.keys(state.history).sort();
+  if (!dates.length) return 0;
+  let s = 0, cursor = new Date(targetDs + 'T00:00:00'), safety = 0;
+  while (safety < 500) {
+    safety++;
+    const ds = cursor.getFullYear() + '-' + String(cursor.getMonth() + 1).padStart(2, '0') + '-' + String(cursor.getDate()).padStart(2, '0');
+    const entry = getEntry(ds);
+    const pct = getPct(entry.steps);
+
+    if (pct >= 1 || (entry.migraine && pct >= MIGRAINE_THRESHOLD)) {
+      s += 1; cursor.setDate(cursor.getDate() - 1); continue;
+    }
+    if (entry.migraine && pct < MIGRAINE_THRESHOLD) {
+      cursor.setDate(cursor.getDate() - 1); continue;
+    }
+    if (entry.steps > 0 && pct < 1) break;
+    if (ds === targetDs) break;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return s;
+}
+
+function getDayStatus(entry) {
+  const pct = getPct(entry.steps);
+  const overTier = getOverGoalTier(pct);
+
+  if (pct >= 1) {
+    if (entry.migraine) return { type: 'migraine-full', frozen: false, keepStreak: true, label: 'Migraine Full Win' };
+    return { type: overTier > 0 ? 'over' : 'goal', frozen: false, keepStreak: true, label: overTier > 0 ? `+${overTier * 10}%` : 'Goal hit' };
+  }
+  if (entry.migraine) {
+    if (pct >= MIGRAINE_THRESHOLD) return { type: 'migraine-win', frozen: false, keepStreak: true, label: 'Migraine-day win' };
+    return { type: 'freeze', frozen: true, keepStreak: false, label: 'Streak frozen' };
+  }
+  if (pct > 0) return { type: 'miss', frozen: false, keepStreak: false, label: 'Below goal' };
+  return { type: 'empty', frozen: false, keepStreak: false, label: 'No log yet' };
+}
+
+function getRewardCopy(entry, status) {
+  const pct = getPct(entry.steps);
+  const overTier = getOverGoalTier(pct);
+
+  if (status.type === 'freeze') {
+    return { emoji: '😿', title: 'Rest up!', desc: `You logged ${entry.steps.toLocaleString()} steps. You didn't hit 40%, but because it's a migraine day, your streak is safely frozen.`, unlock: 'Streak Protected' };
+  }
+  if (status.type === 'migraine-full') {
+    return { emoji: '👑🐱', title: 'Legendary Willpower!', desc: `You hit 100% of your goal ON A MIGRAINE DAY. Absolutely astonishing effort.`, unlock: 'Migraine God Tier' };
+  }
+  if (status.type === 'migraine-win') {
+    return { emoji: '😽', title: 'Migraine Goal Hit', desc: `You hit ${formatPct(pct)}% of your goal on a migraine day. That's enough to keep your streak alive!`, unlock: 'Migraine Success' };
+  }
+  if (pct >= 1) {
+    if (overTier > 0) {
+      return { emoji: getCatMood(pct, false), title: `Overachiever! +${overTier * 10}%`, desc: `You crushed it today! Reached ${formatPct(pct)}% of your daily goal!`, unlock: `Bonus Tier ${overTier}` };
+    }
+    return { emoji: '😺', title: 'Goal Crushed', desc: `You reached your full goal with ${entry.steps.toLocaleString()} steps. Nice work.`, unlock: 'Full goal reward' };
+  }
+  if (pct > 0) {
+    return { emoji: '😿', title: 'Keep going', desc: `You logged ${entry.steps.toLocaleString()} steps today. Try to hit the full goal tomorrow!`, unlock: '' };
+  }
+  return { emoji: '🐾', title: 'Start your day', desc: `Log your steps to unlock your reward and keep the chain alive.`, unlock: '' };
+}
+
+function renderRewardCard(entry, status) {
+  const pct = getPct(entry.steps);
+  const overTier = getOverGoalTier(pct);
+  const reward = getRewardCopy(entry, status);
+  
+  let tier = 'bronze';
+  if (status.type === 'migraine-full') tier = 'legendary';
+  else if (pct >= 1) tier = overTier >= 3 ? 'legendary' : (overTier >= 2 ? 'platinum' : 'gold');
+  else if (status.type === 'migraine-win') tier = 'silver';
+  else if (status.type === 'freeze') tier = 'none';
+
+  const tc = TIERCOLORS[tier] || TIERCOLORS.none;
+  const card = document.getElementById('rewardCard');
+  if (card) { card.style.background = tc.bg; card.style.borderColor = tc.border; card.style.color = 'var(--text)'; }
+  document.getElementById('rewardEmoji').textContent = reward.emoji;
+  document.getElementById('rewardTitle').textContent = reward.title;
+  document.getElementById('rewardDesc').textContent = reward.desc;
+  document.getElementById('rewardUnlockLabel').textContent = reward.unlock || '';
+  document.getElementById('rewardUnlockLabel').style.color = tc.color;
+}
+
+function render() {
+  const today = todayStr();
+  const selectedDs = document.getElementById('logDateInput').value || today;
+  const selectedEntry = getEntry(selectedDs);
+  const selectedStatus = getDayStatus(selectedEntry);
+
+  state.streak = calcStreakThroughDate(today);
+  document.getElementById('streakNum').textContent = state.streak;
+
+  const tier = getRewardForStreak(state.streak);
+  const tc = TIERCOLORS[tier ? tier.tier : 'none'];
+
+  document.getElementById('tierBadge').textContent = tc.label;
+  document.getElementById('tierBadge').style.color = tc.color;
+  document.getElementById('tierBadge').style.borderColor = tc.color;
+  document.getElementById('tierBadge').style.background = tc.color + '18';
+  document.getElementById('streakNum').style.color = tc.color;
+
+  const pct = Math.min(state.streak / 100, 1);
+  const circ = 427;
+  document.getElementById('ringFill').style.strokeDashoffset = circ - circ * pct;
+  document.getElementById('ringFill').style.stroke = tc.color;
+  document.getElementById('goalText').textContent = 'Goal: ' + state.goal.toLocaleString() + ' steps';
+
+  renderRewardCard(selectedEntry, selectedStatus);
+  renderHistory();
+  updateNagBanner();
+}
+
+function renderHistory() {
+  const grid = document.getElementById('historyGrid');
+  grid.innerHTML = '';
+  const today = todayStr();
+
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const entry = getEntry(ds);
+    const status = getDayStatus(entry);
+    const isToday = ds === today;
+    
+    const dot = document.createElement('div');
+    dot.className = 'history-dot ' + (status.keepStreak ? 'hit' : status.frozen ? 'freeze' : entry.steps > 0 ? 'miss' : '') + (isToday ? ' today' : '');
+
+    if (status.keepStreak) {
+      const pct = getPct(entry.steps);
+      const tier = status.type === 'migraine-full' ? 'legendary' : (pct >= 1.3 ? 'legendary' : pct >= 1.1 ? 'platinum' : pct >= 1 ? 'gold' : 'silver');
+      const tc = TIERCOLORS[tier];
+      dot.style.background = tc.color + '30';
+      dot.style.borderColor = tc.color + '70';
+      dot.textContent = getCatMood(pct, entry.migraine);
+    } else if (status.frozen) {
+      dot.textContent = '❄️';
+      dot.style.fontSize = '0.75rem';
+    } else if (entry.steps > 0) {
+      dot.textContent = '😿';
+      dot.style.opacity = '0.5';
+    } else {
+      dot.textContent = '·'; // Restored the placeholder dot for empty days!
+      dot.style.color = isToday ? 'var(--text)' : 'var(--muted)';
+    }
+
+    const tip = document.createElement('div');
+    tip.className = 'dot-tip';
+    const label = entry.migraine ? 'Migraine Day · ' : '';
+    tip.textContent = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }) + ' · ' + label + (entry.steps ? entry.steps.toLocaleString() + ' steps' : 'No steps');
+    dot.appendChild(tip);
+    
+    // Clicking any dot loads it into the main Date Picker Editor
+    dot.addEventListener('click', () => {
+      const di = document.getElementById('logDateInput');
+      di.value = ds;
+      di.dispatchEvent(new Event('change'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.getElementById('stepInput').focus();
+    });
+    
+    grid.appendChild(dot);
+  }
+}
+
+function showUnlock(reward, streak) {
+  document.getElementById('unlockEmoji').textContent = reward.emoji;
+  document.getElementById('unlockStreakLabel').textContent = streak + '-day streak';
+  document.getElementById('unlockTitle').textContent = reward.title;
+  document.getElementById('unlockDesc').textContent = reward.desc;
+  document.getElementById('unlockOverlay').classList.add('show');
+  spawnSparkles('#f5a623');
+}
+
+function spawnSparkles(color) {
+  const container = document.getElementById('sparkles');
+  container.innerHTML = '';
+  for (let i = 0; i < 18; i++) {
+    const s = document.createElement('div'); s.className = 'spark';
+    const angle = i * (360 / 18); const dist = 60 + Math.random() * 80;
+    s.style.cssText = `width:${4+Math.random()*6}px;height:${4+Math.random()*6}px;background:${color};left:${40+Math.random()*20}%;top:${40+Math.random()*20}%;--tx:${Math.cos(angle * Math.PI / 180) * dist}px;--ty:${Math.sin(angle * Math.PI / 180) * dist}px;animation-delay:${Math.random()*0.3}s;animation-duration:${0.8+Math.random()*0.6}s`;
+    container.appendChild(s);
+  }
+}
+
+function launchConfetti() {
+  const colors = ['#ff69b4', '#f5a623', '#ffffff', '#b0e0e6'];
+  for (let i = 0; i < 60; i++) {
+    setTimeout(() => {
+      const p = document.createElement('div'); p.className = 'confetti-piece';
+      p.style.cssText = `left:${Math.random()*100}vw;top:-10px;background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>0.5?'50%':'2px'};animation-delay:${Math.random()*0.1}s;animation-duration:${1.5+Math.random()}s`;
+      document.body.appendChild(p);
+      setTimeout(() => p.remove(), 3000);
+    }, i * 30);
+  }
+}
+
+function updateNagBanner() {
+  const status = getDayStatus(getEntry(todayStr()));
+  const banner = document.getElementById('nagBanner');
+  if (status.keepStreak || status.frozen) { banner.classList.remove('visible'); return; }
+  banner.classList.add('visible');
+}
+
+// Event Listeners
+const dateInput = document.getElementById('logDateInput');
+dateInput.addEventListener('change', () => {
+  const ds = dateInput.value;
+  if (!ds) { dateInput.value = todayStr(); return; }
+  const entry = getEntry(ds);
+  document.getElementById('stepInput').value = entry.steps || '';
+  document.getElementById('migraineToggle').checked = !!entry.migraine;
+  render(); // Update the reward card text for the selected date
+});
+
+document.getElementById('logBtn').addEventListener('click', () => {
+  const val = parseInt(document.getElementById('stepInput').value, 10);
+  if (isNaN(val) || val < 0) return;
+
+  const ds = dateInput.value || todayStr();
+  const migraine = document.getElementById('migraineToggle').checked;
+  setEntry(ds, { steps: val, migraine });
+  save();
+
+  const entry = getEntry(ds);
+  const status = getDayStatus(entry);
+  const pct = getPct(entry.steps);
+
+  render();
+
+  if (status.keepStreak || status.frozen) {
+    showUnlock(getRewardCopy(entry, status), state.streak);
+    if (pct >= 1.1 || (migraine && pct >= 1.0)) launchConfetti();
+  }
+});
+
+document.getElementById('goalEditBtn').addEventListener('click', () => {
+  if (document.getElementById('goalSetArea').classList.toggle('visible')) document.getElementById('goalInput').focus();
+});
+
+document.getElementById('goalSaveBtn').addEventListener('click', () => {
+  const val = parseInt(document.getElementById('goalInput').value, 10);
+  if (val >= 100) { state.goal = val; save(); document.getElementById('goalSetArea').classList.remove('visible'); render(); }
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (confirm('Reset everything? Your whole streak and history will be cleared.')) {
+    state = { goal: 10000, streak: 0, history: {}, lastLoggedDate: null }; save(); 
+    dateInput.value = todayStr(); dateInput.dispatchEvent(new Event('change'));
+  }
+});
+
+document.getElementById('unlockClose').addEventListener('click', () => document.getElementById('unlockOverlay').classList.remove('show'));
+document.getElementById('stepInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('logBtn').click(); });
+document.getElementById('goalInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('goalSaveBtn').click(); });
+
+// Initialization
+load();
+dateInput.max = todayStr();
+dateInput.value = todayStr();
+dateInput.dispatchEvent(new Event('change'));
+</script>
+</body>
+</html>
